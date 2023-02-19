@@ -1,0 +1,122 @@
+<main>
+  <h3>Energy use</h3>
+  Showing:
+  <select (change)='onChangeDisplayMode($event)' style="margin-right: 15px;">
+    <option *ngFor='let opt of displayModes' [value]='opt.value' [selected]='opt.value == displayMode'>{{opt.text}}</option>
+  </select>
+
+  <div *ngIf='displayMode != "single";' class="headerblock">
+    <button (click)='previousMonth();' [disabled]='startDate >= currentMonth'>&lt;</button> {{currentMonth|date:'MMMM yyyy':'+0000'}} <button (click)='nextMonth();' [disabled]='currentMonth >= endMonth'>&gt;</button>
+  </div>
+
+  <div *ngIf='displayMode == "single";' class="headerblock">
+    <button (click)='previousDay();'  [disabled]='startDate >= currentDate'>&lt;</button> {{currentDate|date:'EEEE, MMMM d, yyyy':'+0000'}} <button (click)='nextDay();' [disabled]='currentDate >= endDate'>&gt;</button>
+  </div>
+
+  <div class="headerblock">
+    <strong>Include</strong>:
+    <div class="toggle" (click)="waterHeaterEnabled = !waterHeaterEnabled; updateDatapoints();">Water heater <input type="checkbox" [checked]="waterHeaterEnabled"/></div>
+    <div class="toggle" (click)="carEnabled = !carEnabled; updateDatapoints();">Car <input type="checkbox" [checked]="carEnabled"/></div>
+    <div class="toggle" (click)="hvacEnabled = !hvacEnabled; updateDatapoints();">HVAC <input type="checkbox" [checked]="hvacEnabled"/></div>
+    <div class="toggle" (click)="solarEnabled = !solarEnabled; recalculateDatapoints();">Simulated solar generation <input type="checkbox" [checked]="solarEnabled"/></div>
+  </div>
+
+  <br />
+
+  <!-- Chart for monthly averages -->
+  <div *ngIf='displayMode != "single";' style='margin-top: 10px; max-width: 1000px;'>
+    <svg id='chart-container' viewBox="0 0 1255 620" font-family="Verdana" font-size='14'>
+      <!-- Horizontal axis -->
+      <line x1="48" [attr.y1]='xAxis' x2="1250" [attr.y2]='xAxis' stroke-width="1" stroke="black" />
+      <!-- Vertical axis -->
+      <line x1="48" y1="0" x2="48" [attr.y2]='xAxis' stroke-width="1" stroke="black" />
+      <!-- Vertical axis crossticks and labels -->
+      <line x1="48" [attr.y1]='monthlyZeroLine - wattsToPixelsMonthly(-2000)' x2="1255" [attr.y2]='monthlyZeroLine - wattsToPixelsMonthly(-2000)' stroke-width="1" stroke="black" />
+      <line x1="48" [attr.y1]='monthlyZeroLine - wattsToPixelsMonthly(-1000)' x2="1255" [attr.y2]='monthlyZeroLine - wattsToPixelsMonthly(-1000)' stroke-width="1" stroke="black" />
+      <line x1="48" [attr.y1]='monthlyZeroLine - wattsToPixelsMonthly(0)' x2="1255" [attr.y2]='monthlyZeroLine - wattsToPixelsMonthly(0)' stroke-width="1" stroke="black" />
+      <line x1="48" [attr.y1]='monthlyZeroLine - wattsToPixelsMonthly(1000)' x2="1255" [attr.y2]='monthlyZeroLine - wattsToPixelsMonthly(1000)' stroke-width="1" stroke="black" />
+      <line x1="48" [attr.y1]='monthlyZeroLine - wattsToPixelsMonthly(2000)' x2="1255" [attr.y2]='monthlyZeroLine - wattsToPixelsMonthly(2000)' stroke-width="1" stroke="black" />
+      <line x1="48" [attr.y1]='monthlyZeroLine - wattsToPixelsMonthly(3000)' x2="1255" [attr.y2]='monthlyZeroLine - wattsToPixelsMonthly(3000)' stroke-width="1" stroke="black" />
+      <line x1="48" [attr.y1]='monthlyZeroLine - wattsToPixelsMonthly(4000)' x2="1255" [attr.y2]='monthlyZeroLine - wattsToPixelsMonthly(4000)' stroke-width="1" stroke="black" />
+      <text x='0' [attr.y]='monthlyZeroLine - wattsToPixelsMonthly(-2000)'>-2 kW</text>
+      <text x='0' [attr.y]='monthlyZeroLine - wattsToPixelsMonthly(-1000)'>-1 kW</text>
+      <text x='5' [attr.y]='monthlyZeroLine - wattsToPixelsMonthly(0)'>0 kW</text>
+      <text x='5' [attr.y]='monthlyZeroLine - wattsToPixelsMonthly(1000)'>1 kW</text>
+      <text x='5' [attr.y]='monthlyZeroLine - wattsToPixelsMonthly(2000)'>2 kW</text>
+      <text x='5' [attr.y]='monthlyZeroLine - wattsToPixelsMonthly(3000)'>3 kW</text>
+      <text x='5' [attr.y]='monthlyZeroLine - wattsToPixelsMonthly(4000)'>4 kW</text>
+      <ng-container *ngFor="let dp of calculatedDatapoints; let i = index">
+        <!-- Bar chart bars -->
+        <rect [attr.x]='i * 25 + 55' [attr.y]='monthlyZeroLine - max(wattsToPixelsMonthly(dp.averagePowerWatts),0)' [attr.height]='abs(wattsToPixelsMonthly(dp.averagePowerWatts))' width='20' fill='#6a8acc' shape-rendering='crispEdges'>
+          <title>{{dp.averagePowerWatts + " Watts at " + (dp.startTime|date:"HH:mm")}}</title>
+        </rect>
+        <!-- Time labels -->
+        <text *ngIf='i % 2 == 0' x="1" y="0" [attr.transform]="'translate(' + (i * 25 + 70) + ',' + (xAxis + 58) + ') rotate(-90)'" style="font-size: 16px;">
+          {{dp.startTime|date:"HH:mm"}}
+        </text>
+      </ng-container>
+      <!-- Solar profile -->
+      <polyline *ngIf="solarEnabled" [attr.points]='solarLinePointsMonthly' fill='none' stroke='gold' stroke-width='4'></polyline>
+      <!-- Loading indicator -->
+      <rect *ngIf='isLoading' width="1255" height="620" style="fill: rgb(255,255,255); stroke-width: 0;" />
+      <text *ngIf='isLoading' x="50%" y="50%" font-size="32">Loading...</text>
+    </svg>
+  </div>
+
+  <!-- Chart for one single day -->
+  <div *ngIf='displayMode == "single";' style='margin-top: 10px; max-width: 1000px;'>
+    <svg id='chart-container' viewBox="0 0 1255 620" font-family="Verdana" font-size='14'>
+      <!-- Horizontal axis -->
+      <line x1="48" [attr.y1]='xAxis' x2="1250" [attr.y2]='xAxis' stroke-width="1" stroke="black" />
+      <!-- Vertical axis -->
+      <line x1="48" y1="0" x2="48" [attr.y2]='xAxis' stroke-width="1" stroke="black" />
+      <!-- Vertical axis crossticks and labels -->
+      <line x1="48" [attr.y1]='dailyZeroLine - wattsToPixelsSingle(-2000)' x2="1255" [attr.y2]='dailyZeroLine - wattsToPixelsSingle(-2000)' stroke-width="1" stroke="black" />
+      <line x1="48" [attr.y1]='dailyZeroLine - wattsToPixelsSingle(0)' x2="1255" [attr.y2]='dailyZeroLine - wattsToPixelsSingle(0)' stroke-width="1" stroke="black" />
+      <line x1="48" [attr.y1]='dailyZeroLine - wattsToPixelsSingle(2000)' x2="1255" [attr.y2]='dailyZeroLine - wattsToPixelsSingle(2000)' stroke-width="1" stroke="black" />
+      <line x1="48" [attr.y1]='dailyZeroLine - wattsToPixelsSingle(4000)' x2="1255" [attr.y2]='dailyZeroLine - wattsToPixelsSingle(4000)' stroke-width="1" stroke="black" />
+      <line x1="48" [attr.y1]='dailyZeroLine - wattsToPixelsSingle(6000)' x2="1255" [attr.y2]='dailyZeroLine - wattsToPixelsSingle(6000)' stroke-width="1" stroke="black" />
+      <line x1="48" [attr.y1]='dailyZeroLine - wattsToPixelsSingle(8000)' x2="1255" [attr.y2]='dailyZeroLine - wattsToPixelsSingle(8000)' stroke-width="1" stroke="black" />
+      <line x1="48" [attr.y1]='dailyZeroLine - wattsToPixelsSingle(10000)' x2="1255" [attr.y2]='dailyZeroLine - wattsToPixelsSingle(10000)' stroke-width="1" stroke="black" />
+      <line x1="48" [attr.y1]='dailyZeroLine - wattsToPixelsSingle(12000)' x2="1255" [attr.y2]='dailyZeroLine - wattsToPixelsSingle(12000)' stroke-width="1" stroke="black" />
+      <line x1="48" [attr.y1]='dailyZeroLine - wattsToPixelsSingle(14000)' x2="1255" [attr.y2]='dailyZeroLine - wattsToPixelsSingle(14000)' stroke-width="1" stroke="black" />
+      <text x='2' [attr.y]='dailyZeroLine - wattsToPixelsSingle(-2000)'>-2 kW</text>
+      <text x='8' [attr.y]='dailyZeroLine - wattsToPixelsSingle(0)'>0 kW</text>
+      <text x='8' [attr.y]='dailyZeroLine - wattsToPixelsSingle(2000)'>2 kW</text>
+      <text x='8' [attr.y]='dailyZeroLine - wattsToPixelsSingle(4000)'>4 kW</text>
+      <text x='8' [attr.y]='dailyZeroLine - wattsToPixelsSingle(6000)'>6 kW</text>
+      <text x='8' [attr.y]='dailyZeroLine - wattsToPixelsSingle(8000)'>8 kW</text>
+      <text x='0' [attr.y]='dailyZeroLine - wattsToPixelsSingle(10000)'>10 kW</text>
+      <text x='0' [attr.y]='dailyZeroLine - wattsToPixelsSingle(12000)'>12 kW</text>
+      <text x='0' [attr.y]='dailyZeroLine - wattsToPixelsSingle(14000)'>14 kW</text>
+      <ng-container *ngFor="let dp of calculatedDatapoints; let i = index">
+        <!-- Bar chart bars -->
+        <rect [attr.x]='i * 25 + 55' [attr.y]='dailyZeroLine - max(wattsToPixelsSingle(dp.averagePowerWatts), 0)' [attr.height]='abs(wattsToPixelsSingle(dp.averagePowerWatts))' width='20' fill='#6a8acc' shape-rendering='crispEdges'>
+          <title>{{dp.averagePowerWatts + " Watts at " + (dp.startTime|date:"HH:mm")}}</title>
+        </rect>
+        <!-- Time labels -->
+        <text *ngIf='i % 2 == 0' x="1" y="0" [attr.transform]="'translate(' + (i * 25 + 70) + ',' + (xAxis + 58) + ') rotate(-90)'" style="font-size: 16px;">
+          {{dp.startTime|date:"HH:mm"}}
+        </text>
+        <!-- Solar profile -->
+        <polyline *ngIf="solarEnabled" [attr.points]='solarLinePointsDaily' fill='none' stroke='gold' stroke-width='4'></polyline>
+      </ng-container>
+      <!-- Loading indicator -->
+      <rect *ngIf='isLoading' width="1255" height="620" style="fill: rgb(255,255,255); stroke-width: 0;" />
+      <text *ngIf='isLoading' x="50%" y="50%" font-size="32">Loading...</text>
+    </svg>
+  </div>
+
+  <!-- Ramp rates -->
+  <div style='margin: 15px 0;'>
+    <h3>Ramp rates</h3>
+    <p>Half-hourly change in watts. Positive values are ramp up (increasing grid demand); negative values are ramp down (decreasing grid demand).</p>
+    <table>
+      <tr><th></th><th>Average</th><th>Median</th><th>Extreme</th></tr>
+      <tr><td><span class="arrow">&#8595;</span> between 06:00 and 11:00</td><td>{{rampRateDownAverage}}</td><td>{{rampRateDownMedian}}</td><td>{{rampRateDownExtreme}}</td></tr>
+      <tr><td><span class="arrow">&#8593;</span> between 15:00 and 20:00</td><td>{{rampRateUpAverage}}</td><td>{{rampRateUpMedian}}</td><td>{{rampRateUpExtreme}}</td></tr>
+    </table>
+
+  </div>
+
+</main>
